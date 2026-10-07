@@ -8,7 +8,12 @@ import { createClient } from '@supabase/supabase-js';
 export const SUPABASE_URL = 'https://qzpikbpdfzbifmjahteh.supabase.co';
 export const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF6cGlrYnBkZnpiaWZtamFodGVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyOTc1NzQsImV4cCI6MjEwNjg3MzU3NH0.u-UoJtpnKZ4m2OcVodhZCgKcsd-VpD6tggpm_rvkXGc';
 
-export const sb = createClient(SUPABASE_URL, window.__SB_ANON || SUPABASE_ANON, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storage: window.localStorage }, realtime: { params: { eventsPerSecond: 10 } } });
+// where email links send players back to (the live game, even when testing on this computer)
+// what kind of email link brought the player here (read before Supabase tidies the address bar)
+export const LINK_TYPE = new URLSearchParams(location.hash.slice(1)).get('type');
+export const SITE_URL = /^(localhost|127\.|0\.0\.0\.0)/.test(location.hostname) || location.protocol === 'file:' ? 'https://vision27.vercel.app' : location.origin;
+// links in emails log the player in when they land back on the site (detectSessionInUrl)
+export const sb = createClient(SUPABASE_URL, window.__SB_ANON || SUPABASE_ANON, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storage: window.localStorage }, realtime: { params: { eventsPerSecond: 10 } } });
 const msg = e => (e && (e.message || e.error_description || e.msg)) || 'Something went wrong. Try again.';
 const ok = async p => { const { data, error } = await p; if (error) throw new Error(friendly(msg(error))); return data; };
 function friendly(m) {
@@ -31,18 +36,22 @@ export const auth = {
   session: async () => (await sb.auth.getSession()).data.session,
   usernameFree: async name => { const { data, error } = await sb.rpc('username_available', { name }); return error ? true : !!data; },
   signUp: async (username, email, password) => {
-    const r = await ok(sb.auth.signUp({ email, password, options: { data: { username }, emailRedirectTo: location.origin } }));
+    const r = await ok(sb.auth.signUp({ email, password, options: { data: { username }, emailRedirectTo: SITE_URL } }));
     // Supabase hides whether an email is taken: it answers with a user that has no identities and sends nothing
     if (r.user && !r.session && Array.isArray(r.user.identities) && !r.user.identities.length) throw new Error('That email already has an account. Log in instead, or reset your password.');
     return r;
   },
   verify: (email, token, type = 'email') => ok(sb.auth.verifyOtp({ email, token, type })),
-  resend: email => ok(sb.auth.resend({ type: 'signup', email })),
+  resend: email => ok(sb.auth.resend({ type: 'signup', email, options: { emailRedirectTo: SITE_URL } })),
   login: (email, password) => ok(sb.auth.signInWithPassword({ email, password })),
-  sendReset: email => ok(sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin })),
+  sendReset: email => ok(sb.auth.resetPasswordForEmail(email, { redirectTo: SITE_URL })),
   setPassword: password => ok(sb.auth.updateUser({ password })),
   logout: () => sb.auth.signOut(),
   onSignedOut: fn => sb.auth.onAuthStateChange(ev => { if (ev === 'SIGNED_OUT') fn(); }),
+  onSignedIn: fn => sb.auth.onAuthStateChange((ev, s) => { if (s && (ev === 'SIGNED_IN' || ev === 'PASSWORD_RECOVERY')) setTimeout(() => fn(ev), 0); }),
+  /* an email link that failed (expired or used) comes back as #error=…; read it and clean the address bar */
+  linkType: () => LINK_TYPE,
+  linkError: () => { const h = new URLSearchParams(location.hash.slice(1)), e = h.get('error_description') || h.get('error'); if (e) history.replaceState(null, '', location.pathname + location.search); return e; },
 };
 
 /* ---------------- profiles ---------------- */

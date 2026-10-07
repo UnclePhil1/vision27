@@ -36,7 +36,7 @@ Every table has Row Level Security turned on.
 
 **Authentication → Emails → Templates**
 
-Supabase sends a link by default. Change two templates so they send the 6-digit code instead.
+Each email shows both a 6-digit code and a button. Players can type the code in the game or tap the button; both work.
 
 **Confirm signup**: subject `Your Vision27 code`, message:
 
@@ -44,7 +44,9 @@ Supabase sends a link by default. Change two templates so they send the 6-digit 
 <h2>Welcome to Vision27</h2>
 <p>Your code is:</p>
 <p style="font-size:32px;font-weight:bold;letter-spacing:6px">{{ .Token }}</p>
-<p>It expires in 1 hour. If you did not sign up, ignore this email.</p>
+<p>Or tap this button to confirm and play:</p>
+<p><a href="{{ .ConfirmationURL }}" style="background:#1d8a4a;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;display:inline-block">Confirm my email</a></p>
+<p>The code expires in 1 hour. If you did not sign up, ignore this email.</p>
 ```
 
 **Reset password**: subject `Reset your Vision27 password`, message:
@@ -52,6 +54,8 @@ Supabase sends a link by default. Change two templates so they send the 6-digit 
 ```html
 <p>Your password reset code is:</p>
 <p style="font-size:32px;font-weight:bold;letter-spacing:6px">{{ .Token }}</p>
+<p>Or tap this button to choose a new password:</p>
+<p><a href="{{ .ConfirmationURL }}" style="background:#1d8a4a;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;display:inline-block">Reset my password</a></p>
 ```
 
 ## 3. Send real emails (needed, or players get no code)
@@ -74,7 +78,7 @@ Brevo or Mailgun work the same way with their own host and login.
 
 ## 4. Set your site address
 
-**Authentication → URL Configuration → Site URL**: the address where you host the game, for example `https://vision27.vercel.app`. Add the same address with `/**` at the end under **Redirect URLs**.
+**Authentication → URL Configuration → Site URL**: the address where you host the game, `https://vision27.vercel.app`. Under **Redirect URLs**, add `https://vision27.vercel.app/**`. If the Site URL still says `localhost`, email buttons will point to localhost.
 
 ## 5. Host the game
 

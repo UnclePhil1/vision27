@@ -20,17 +20,23 @@ export async function authGate() {
   box = $('auth');
   return new Promise(async res => {
     resolveGate = res;
-    // a saved session keeps players logged in until they log out or clear browser data
+    const linkErr = auth.linkError();
+    // a saved session (or one from an email link) keeps players logged in until they log out
     const s = await auth.session().catch(() => null);
+    // confirming by the email link in another tab logs this tab in too
+    auth.onSignedIn(ev => { if (ev === 'PASSWORD_RECOVERY' && mode !== 'reset') show('newpass'); else if (!box.hidden && mode === 'verify') afterLogin(); });
+    if (s && auth.linkType() === 'recovery') { await hideSplash(); return show('newpass'); }
     if (s) { const p = await myProfile().catch(() => null); if (p?.avatar) { await hideSplash(); return finish(p); } }
     box.hidden = false;
     if (s) return afterLogin();
     // new players start on sign up, returning ones on log in
-    show(localStorage.getItem('abuja.seen') ? 'login' : 'signup');
+    show(localStorage.getItem('abuja.seen') || linkErr ? 'login' : 'signup', linkErr ? 'That email link has expired or was already used. Log in, or ask for a new code.' : undefined);
     hideSplash();
   });
 }
+let entering = false;
 async function afterLogin() {
+  if (entering) return; entering = true;     // the code and the email link can both finish sign-in; only go in once
   const p = await myProfile().catch(() => null);
   if (!p) { show('login', 'We could not load your profile. Check your connection and log in again.'); return; }
   if (!p.avatar) return avatarSetup(p);
@@ -59,7 +65,7 @@ function err(text) { const e = $('aErr'); e.textContent = text || ''; e.hidden =
 function card(html) { box.innerHTML = `<div class="acard"><div class="abrand"><b>Vision27</b><small>Abuja life sim</small></div>${html}<p class="aerr" id="aErr" hidden></p></div>`; wire(); }
 
 function show(step, note) {
-  mode = step;
+  mode = step; entering = false;
   if (step === 'login') {
     card(`<h1>Welcome back</h1><p class="asub">Log in to continue your Abuja life.</p>
       ${field('aEmail', 'Email', 'email', 'autocomplete="email" inputmode="email"')}${field('aPass', 'Password', 'password', 'autocomplete="current-password"')}
@@ -104,7 +110,7 @@ function show(step, note) {
   }
   if (step === 'verify' || step === 'reset') {
     const reset = step === 'reset';
-    card(`<h1>${reset ? 'Reset your password' : 'Check your email'}</h1><p class="asub">We sent a 6-digit code to <b></b>. It can take a minute. Check your spam or junk folder too.</p>
+    card(`<h1>${reset ? 'Reset your password' : 'Check your email'}</h1><p class="asub">We sent an email to <b></b>. Type the 6-digit code from it, or just tap the button in the email. It can take a minute; check spam too.</p>
       <label class="af"><span>Code</span><input id="aCode" class="acode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••"></label>
       ${reset ? field('aPass', 'New password', 'password', 'autocomplete="new-password" placeholder="8+ characters, letters and numbers"') : ''}
       <button class="cta wide" id="aGo">${reset ? 'Save new password' : 'Verify email'}</button>
@@ -125,6 +131,11 @@ function show(step, note) {
     };
     tick();
     $('aBack').onclick = () => show(reset ? 'forgot' : 'signup');
+  }
+  if (step === 'newpass') {      // arrived from a password reset link
+    card(`<h1>Choose a new password</h1><p class="asub">You opened the reset link from your email.</p>${field('aPass', 'New password', 'password', 'autocomplete="new-password" placeholder="8+ characters, letters and numbers"')}<button class="cta wide" id="aGo">Save new password</button>`);
+    box.hidden = false;
+    $('aGo').onclick = async () => { if (!goodPass($('aPass').value)) return err(PASS_RULE); busy($('aGo'), true, 'Saving…'); try { await auth.setPassword($('aPass').value); afterLogin(); } catch (e) { err(e.message); busy($('aGo'), false, 'Save new password'); } };
   }
   if (step === 'forgot') {
     card(`<h1>Forgot password</h1><p class="asub">Enter your email and we'll send a code.</p>
