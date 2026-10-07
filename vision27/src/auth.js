@@ -39,10 +39,24 @@ async function afterLogin() {
 function finish(p) { try { localStorage.setItem('abuja.seen', '1'); } catch { } box.hidden = true; hideSplash(); resolveGate(p); }
 
 /* ---------- small form helpers ---------- */
-const field = (id, label, type = 'text', attrs = '') => `<label class="af"><span>${label}</span><input id="${id}" type="${type}" ${attrs}></label>`;
+const EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3l18 18M10.6 5.1A10.6 10.6 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6A17.4 17.4 0 0 0 2 12s3.6 7 10 7a10 10 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
+const field = (id, label, type = 'text', attrs = '') => type === 'password'
+  ? `<label class="af"><span>${label}</span><span class="apw"><input id="${id}" type="password" ${attrs}><button type="button" class="eye" data-eye="${id}" aria-label="Show password" aria-pressed="false">${EYE}</button></span></label>`
+  : `<label class="af"><span>${label}</span><input id="${id}" type="${type}" ${attrs}></label>`;
+/* show or hide a password; Enter in any field presses the main button */
+function wire() {
+  box.querySelectorAll('[data-eye]').forEach(b => b.onclick = () => {
+    const i = $(b.dataset.eye), on = i.type === 'password'; i.type = on ? 'text' : 'password';
+    b.innerHTML = on ? EYE_OFF : EYE; b.setAttribute('aria-pressed', on); b.setAttribute('aria-label', on ? 'Hide password' : 'Show password'); i.focus();
+  });
+  box.querySelectorAll('.acard input').forEach(i => i.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('aGo')?.click(); } }));
+}
+const goodPass = pw => pw.length >= 8 && /[A-Za-z]/.test(pw) && /\d/.test(pw);
+const PASS_RULE = 'Password must be at least 8 characters, with letters and numbers.';
 function busy(btn, on, text) { btn.disabled = on; if (text) btn.textContent = text; }
 function err(text) { const e = $('aErr'); e.textContent = text || ''; e.hidden = !text; }
-function card(html) { box.innerHTML = `<div class="acard"><div class="abrand"><b>Vision27</b><small>Abuja life sim</small></div>${html}<p class="aerr" id="aErr" hidden></p></div>`; }
+function card(html) { box.innerHTML = `<div class="acard"><div class="abrand"><b>Vision27</b><small>Abuja life sim</small></div>${html}<p class="aerr" id="aErr" hidden></p></div>`; wire(); }
 
 function show(step, note) {
   mode = step;
@@ -56,14 +70,14 @@ function show(step, note) {
       email = $('aEmail').value.trim(); const pw = $('aPass').value; if (!email || !pw) return err('Enter your email and password.');
       busy($('aGo'), true, 'Logging in…');
       try { await auth.login(email, pw); afterLogin(); }
-      catch (e) { if (e.message === 'EMAIL_NOT_CONFIRMED') { auth.resend(email).catch(() => { }); show('verify', 'Your email is not verified yet. We sent you a new code.'); } else { err(e.message); busy($('aGo'), false, 'Log in'); } }
+      catch (e) { if (e.message === 'EMAIL_NOT_CONFIRMED') { show('verify', 'Your email is not verified yet. We sent you a new code.'); auth.resend(email).then(cooldown, x => err(x.message)); } else { err(e.message); busy($('aGo'), false, 'Log in'); } }
     };
     $('aToSign').onclick = () => show('signup'); $('aForgot').onclick = () => show('forgot');
   }
   if (step === 'signup') {
     card(`<h1>Create your account</h1><p class="asub">Your username is how other players see you.</p>
       ${field('aUser', 'Username', 'text', 'autocomplete="username" maxlength="20" placeholder="letters, numbers, _"')}<small class="ahint" id="aUserHint"></small>
-      ${field('aEmail', 'Email', 'email', 'autocomplete="email" inputmode="email"')}${field('aPass', 'Password', 'password', 'autocomplete="new-password" placeholder="at least 6 characters"')}
+      ${field('aEmail', 'Email', 'email', 'autocomplete="email" inputmode="email"')}${field('aPass', 'Password', 'password', 'autocomplete="new-password" placeholder="8+ characters, letters and numbers"')}
       <button class="cta wide" id="aGo">Create account</button>
       <div class="alinks"><button class="alink" id="aToLogin">I already have an account</button></div>`);
     let t = 0;
@@ -77,22 +91,22 @@ function show(step, note) {
       const u = $('aUser').value.trim(), pw = $('aPass').value; email = $('aEmail').value.trim();
       if (!/^[A-Za-z0-9_]{3,20}$/.test(u)) return err('Pick a username: 3 to 20 letters, numbers or _.');
       if (!/^\S+@\S+\.\S+$/.test(email)) return err('Enter a valid email.');
-      if (pw.length < 6) return err('Password must be at least 6 characters.');
+      if (!goodPass(pw)) return err(PASS_RULE);
       busy($('aGo'), true, 'Creating…');
       try {
         if (!(await auth.usernameFree(u))) throw new Error('That username is taken. Try another.');
         const r = await auth.signUp(u, email, pw);
         if (r.session) return afterLogin();       // email confirmation turned off in Supabase
-        show('verify');
+        show('verify'); cooldown();
       } catch (e) { err(e.message); busy($('aGo'), false, 'Create account'); }
     };
     $('aToLogin').onclick = () => show('login');
   }
   if (step === 'verify' || step === 'reset') {
     const reset = step === 'reset';
-    card(`<h1>${reset ? 'Reset your password' : 'Check your email'}</h1><p class="asub">We sent a 6-digit code to <b></b>.</p>
+    card(`<h1>${reset ? 'Reset your password' : 'Check your email'}</h1><p class="asub">We sent a 6-digit code to <b></b>. It can take a minute. Check your spam or junk folder too.</p>
       <label class="af"><span>Code</span><input id="aCode" class="acode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••"></label>
-      ${reset ? field('aPass', 'New password', 'password', 'autocomplete="new-password"') : ''}
+      ${reset ? field('aPass', 'New password', 'password', 'autocomplete="new-password" placeholder="8+ characters, letters and numbers"') : ''}
       <button class="cta wide" id="aGo">${reset ? 'Save new password' : 'Verify email'}</button>
       <div class="alinks"><button class="alink" id="aResend">Send a new code</button><button class="alink" id="aBack">Use a different email</button></div>`);
     box.querySelector('.asub b').textContent = email;
@@ -100,17 +114,16 @@ function show(step, note) {
     $('aCode').oninput = () => { $('aCode').value = $('aCode').value.replace(/\D/g, '').slice(0, 6); if (!reset && $('aCode').value.length === 6) $('aGo').click(); };
     $('aGo').onclick = async () => {
       const code = $('aCode').value; if (code.length !== 6) return err('Enter the 6-digit code.');
-      if (reset && $('aPass').value.length < 6) return err('Password must be at least 6 characters.');
+      if (reset && !goodPass($('aPass').value)) return err(PASS_RULE);
       busy($('aGo'), true, 'Checking…');
       try { await auth.verify(email, code, reset ? 'recovery' : 'email'); if (reset) await auth.setPassword($('aPass').value); afterLogin(); }
       catch (e) { err(e.message); busy($('aGo'), false, reset ? 'Save new password' : 'Verify email'); }
     };
-    let wait = 0;
     $('aResend').onclick = async () => {
-      if (Date.now() < wait) return err(`Wait ${Math.ceil((wait - Date.now()) / 1000)}s before asking again.`);
-      wait = Date.now() + 60000;
-      try { reset ? await auth.sendReset(email) : await auth.resend(email); err(''); $('aResend').textContent = 'Code sent ✓'; } catch (e) { err(e.message); }
+      if (Date.now() < resendAt) return;
+      try { reset ? await auth.sendReset(email) : await auth.resend(email); err(''); cooldown(); } catch (e) { err(e.message); }
     };
+    tick();
     $('aBack').onclick = () => show(reset ? 'forgot' : 'signup');
   }
   if (step === 'forgot') {
@@ -118,10 +131,20 @@ function show(step, note) {
       ${field('aEmail', 'Email', 'email', 'autocomplete="email" inputmode="email"')}
       <button class="cta wide" id="aGo">Send code</button><div class="alinks"><button class="alink" id="aToLogin">Back to log in</button></div>`);
     $('aEmail').value = email;
-    $('aGo').onclick = async () => { email = $('aEmail').value.trim(); if (!email) return err('Enter your email.'); busy($('aGo'), true, 'Sending…'); try { await auth.sendReset(email); show('reset'); } catch (e) { err(e.message); busy($('aGo'), false, 'Send code'); } };
+    $('aGo').onclick = async () => { email = $('aEmail').value.trim(); if (!/^\S+@\S+\.\S+$/.test(email)) return err('Enter a valid email.'); busy($('aGo'), true, 'Sending…'); try { await auth.sendReset(email); show('reset'); cooldown(); } catch (e) { err(e.message); busy($('aGo'), false, 'Send code'); } };
     $('aToLogin').onclick = () => show('login');
   }
   if (note) { const p = document.createElement('p'); p.className = 'anote'; p.textContent = note; box.querySelector('.asub').after(p); }
+}
+
+/* "Send a new code" waits 60 seconds between sends (Supabase limits it too) */
+let resendAt = 0, timer = 0;
+function cooldown() { resendAt = Date.now() + 60000; tick(); }
+function tick() {
+  clearTimeout(timer); const b = $('aResend'); if (!b) return;
+  const left = Math.ceil((resendAt - Date.now()) / 1000);
+  b.disabled = left > 0; b.textContent = left > 0 ? `Send a new code in ${left}s` : 'Send a new code';
+  if (left > 0) timer = setTimeout(tick, 1000);
 }
 
 /* ---------- avatar and life ---------- */
@@ -170,3 +193,5 @@ function avatarSetup(profile) {
   };
 }
 export async function logout() { await auth.logout(); location.reload(); }
+// logging out in another tab logs this one out too
+auth.onSignedOut(() => { if (box?.hidden) location.reload(); });

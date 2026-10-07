@@ -54,15 +54,27 @@ Supabase sends a link by default. Change two templates so they send the 6-digit 
 <p style="font-size:32px;font-weight:bold;letter-spacing:6px">{{ .Token }}</p>
 ```
 
-## 3. Send real emails (important before launch)
+## 3. Send real emails (needed, or players get no code)
 
-Supabase's built-in email only sends a handful of emails per hour. That's fine for testing, but not for real players.
+Supabase's built-in email is for testing only. It sends a few emails per hour, and only to people on your Supabase team. Real players get no code until you add your own email sender.
 
-Go to **Authentication → Emails → SMTP Settings** and add a provider such as Resend, Brevo or Mailgun.
+Example with Resend (free plan is enough to start):
+
+1. Sign up at resend.com and add your domain (or use their test domain while testing). Add the DNS records it shows you and wait for "Verified".
+2. Create an API key in Resend.
+3. In Supabase go to **Authentication → Emails → SMTP Settings**, turn on **Custom SMTP** and fill in:
+   - Host: `smtp.resend.com` · Port: `465` · Username: `resend` · Password: your Resend API key
+   - Sender email: an address on your verified domain, e.g. `no-reply@yourdomain.com` · Sender name: `Vision27`
+4. Go to **Authentication → Rate Limits** and raise "emails per hour" (for example 100).
+5. Sign up with a new email to test. Check spam the first time.
+
+Brevo or Mailgun work the same way with their own host and login.
+
+**Password rules:** in **Authentication → Sign In / Providers → Email**, set minimum password length to **8** and require letters and digits. The game asks for the same.
 
 ## 4. Set your site address
 
-**Authentication → URL Configuration → Site URL**: the address where you host the game, for example `https://vision27.ng`.
+**Authentication → URL Configuration → Site URL**: the address where you host the game, for example `https://vision27.vercel.app`. Add the same address with `/**` at the end under **Redirect URLs**.
 
 ## 5. Host the game
 
