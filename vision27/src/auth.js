@@ -3,7 +3,7 @@ import { auth, myProfile, saveProfile } from './backend.js';
 import { makeAvatar, SKINS, COLORS, OUTFITS, cleanAvatar, DEFAULT_AVATAR } from './avatar.js';
 import { ROLES } from './roles.js';
 
-/* Sign up → 6-digit email code → avatar and life setup. Log in and reset password too.
+/* Sign up → confirmation link by email → avatar and life setup. Log in and reset password (by link) too.
    Resolves with the player's profile once they are ready to enter the city. */
 const $ = id => document.getElementById(id);
 const hex = n => '#' + n.toString(16).padStart(6, '0');
@@ -68,22 +68,28 @@ function show(step, note) {
   mode = step; entering = false;
   if (step === 'login') {
     card(`<h1>Welcome back</h1><p class="asub">Log in to continue your Abuja life.</p>
-      ${field('aEmail', 'Email', 'email', 'autocomplete="email" inputmode="email"')}${field('aPass', 'Password', 'password', 'autocomplete="current-password"')}
+      ${field('aEmail', 'Username or email', 'text', 'autocomplete="username" autocapitalize="off" spellcheck="false"')}${field('aPass', 'Password', 'password', 'autocomplete="current-password"')}
       <button class="cta wide" id="aGo">Log in</button>
       <div class="alinks"><button class="alink" id="aToSign">New here? Create an account</button><button class="alink" id="aForgot">Forgot password?</button></div>`);
     $('aEmail').value = email;
     $('aGo').onclick = async () => {
-      email = $('aEmail').value.trim(); const pw = $('aPass').value; if (!email || !pw) return err('Enter your email and password.');
+      email = $('aEmail').value.trim(); const pw = $('aPass').value; if (!email || !pw) return err('Enter your username (or email) and password.');
       busy($('aGo'), true, 'Logging in…');
       try { await auth.login(email, pw); afterLogin(); }
-      catch (e) { if (e.message === 'EMAIL_NOT_CONFIRMED') { show('verify', 'Your email is not verified yet. We sent you a new code.'); auth.resend(email).then(cooldown, x => err(x.message)); } else { err(e.message); busy($('aGo'), false, 'Log in'); } }
+      catch (e) {
+        if (e.message === 'EMAIL_NOT_CONFIRMED' && email.includes('@')) { show('verify', 'Your email is not confirmed yet. We sent you a new link.'); auth.resend(email).then(cooldown, x => err(x.message)); return; }
+        // a username that belongs to an email account: tell them to use the email
+        if (!email.includes('@') && /wrong email/i.test(e.message) && await auth.loginKind(email).catch(() => null) === 'email') e.message = 'This account logs in with its email address. Type the email instead of the username.';
+        err(e.message.replace('Wrong email or password.', 'Wrong username, email or password.')); busy($('aGo'), false, 'Log in');
+      }
     };
     $('aToSign').onclick = () => show('signup'); $('aForgot').onclick = () => show('forgot');
   }
   if (step === 'signup') {
     card(`<h1>Create your account</h1><p class="asub">Your username is how other players see you.</p>
       ${field('aUser', 'Username', 'text', 'autocomplete="username" maxlength="20" placeholder="letters, numbers, _"')}<small class="ahint" id="aUserHint"></small>
-      ${field('aEmail', 'Email', 'email', 'autocomplete="email" inputmode="email"')}${field('aPass', 'Password', 'password', 'autocomplete="new-password" placeholder="8+ characters, letters and numbers"')}
+      ${field('aEmail', 'Email (optional)', 'email', 'autocomplete="email" inputmode="email" placeholder="for password resets"')}<small class="ahint">No email? You log in with your username, but you cannot reset a forgotten password.</small>
+      ${field('aPass', 'Password', 'password', 'autocomplete="new-password" placeholder="8+ characters, letters and numbers"')}
       <button class="cta wide" id="aGo">Create account</button>
       <div class="alinks"><button class="alink" id="aToLogin">I already have an account</button></div>`);
     let t = 0;
@@ -96,13 +102,14 @@ function show(step, note) {
     $('aGo').onclick = async () => {
       const u = $('aUser').value.trim(), pw = $('aPass').value; email = $('aEmail').value.trim();
       if (!/^[A-Za-z0-9_]{3,20}$/.test(u)) return err('Pick a username: 3 to 20 letters, numbers or _.');
-      if (!/^\S+@\S+\.\S+$/.test(email)) return err('Enter a valid email.');
+      if (email && !/^\S+@\S+\.\S+$/.test(email)) return err('That email does not look right. Fix it, or leave it empty.');
       if (!goodPass(pw)) return err(PASS_RULE);
       busy($('aGo'), true, 'Creating…');
       try {
         if (!(await auth.usernameFree(u))) throw new Error('That username is taken. Try another.');
         const r = await auth.signUp(u, email, pw);
-        if (r.session) return afterLogin();       // email confirmation turned off in Supabase
+        if (r.session) return afterLogin();       // email confirmation is off in Supabase: play straight away
+        if (!email) throw new Error('Your account was made, but it cannot start yet: the game needs email confirmation turned off. Please tell the game team.');
         show('verify'); cooldown();
       } catch (e) { err(e.message); busy($('aGo'), false, 'Create account'); }
     };
@@ -110,20 +117,16 @@ function show(step, note) {
   }
   if (step === 'verify' || step === 'reset') {
     const reset = step === 'reset';
-    card(`<h1>${reset ? 'Reset your password' : 'Check your email'}</h1><p class="asub">We sent an email to <b></b>. Type the 6-digit code from it, or just tap the button in the email. It can take a minute; check spam too.</p>
-      <label class="af"><span>Code</span><input id="aCode" class="acode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••"></label>
-      ${reset ? field('aPass', 'New password', 'password', 'autocomplete="new-password" placeholder="8+ characters, letters and numbers"') : ''}
-      <button class="cta wide" id="aGo">${reset ? 'Save new password' : 'Verify email'}</button>
-      <div class="alinks"><button class="alink" id="aResend">Send a new code</button><button class="alink" id="aBack">Use a different email</button></div>`);
+    card(`<h1>${reset ? 'Check your email' : 'Confirm your email'}</h1>
+      <p class="asub">${reset ? 'We sent a password reset link to <b></b>. Click the link in the email to choose a new password.' : 'We sent a confirmation link to <b></b>. Click the link in the email to confirm your registration.'}</p>
+      <div class="amail"><b>Can't find it?</b><small>It can take a minute. Check your spam or promotions folder. Keep this page open: it moves on by itself once you click the link.</small></div>
+      ${reset ? '' : '<button class="cta wide" id="aGo">I clicked the link, continue</button>'}
+      <div class="alinks"><button class="alink" id="aResend">Send the link again</button><button class="alink" id="aBack">Use a different email</button></div>`);
     box.querySelector('.asub b').textContent = email;
-    $('aCode').focus();
-    $('aCode').oninput = () => { $('aCode').value = $('aCode').value.replace(/\D/g, '').slice(0, 6); if (!reset && $('aCode').value.length === 6) $('aGo').click(); };
-    $('aGo').onclick = async () => {
-      const code = $('aCode').value; if (code.length !== 6) return err('Enter the 6-digit code.');
-      if (reset && !goodPass($('aPass').value)) return err(PASS_RULE);
+    if (!reset) $('aGo').onclick = async () => {
       busy($('aGo'), true, 'Checking…');
-      try { await auth.verify(email, code, reset ? 'recovery' : 'email'); if (reset) await auth.setPassword($('aPass').value); afterLogin(); }
-      catch (e) { err(e.message); busy($('aGo'), false, reset ? 'Save new password' : 'Verify email'); }
+      if (await auth.session().catch(() => null)) return afterLogin();
+      err('Not confirmed yet. Click the link in the email first, then log in if this page does not move on.'); busy($('aGo'), false, 'I clicked the link, continue');
     };
     $('aResend').onclick = async () => {
       if (Date.now() < resendAt) return;
@@ -131,6 +134,8 @@ function show(step, note) {
     };
     tick();
     $('aBack').onclick = () => show(reset ? 'forgot' : 'signup');
+    // the link usually opens in a new tab; when that tab signs in, this one follows
+    clearInterval(watch); if (!reset) watch = setInterval(async () => { if (mode !== 'verify') return clearInterval(watch); if (await auth.session().catch(() => null)) { clearInterval(watch); afterLogin(); } }, 4000);
   }
   if (step === 'newpass') {      // arrived from a password reset link
     card(`<h1>Choose a new password</h1><p class="asub">You opened the reset link from your email.</p>${field('aPass', 'New password', 'password', 'autocomplete="new-password" placeholder="8+ characters, letters and numbers"')}<button class="cta wide" id="aGo">Save new password</button>`);
@@ -138,23 +143,23 @@ function show(step, note) {
     $('aGo').onclick = async () => { if (!goodPass($('aPass').value)) return err(PASS_RULE); busy($('aGo'), true, 'Saving…'); try { await auth.setPassword($('aPass').value); afterLogin(); } catch (e) { err(e.message); busy($('aGo'), false, 'Save new password'); } };
   }
   if (step === 'forgot') {
-    card(`<h1>Forgot password</h1><p class="asub">Enter your email and we'll send a code.</p>
+    card(`<h1>Forgot password</h1><p class="asub">Enter your email and we'll send you a reset link. Accounts made without an email cannot be reset.</p>
       ${field('aEmail', 'Email', 'email', 'autocomplete="email" inputmode="email"')}
-      <button class="cta wide" id="aGo">Send code</button><div class="alinks"><button class="alink" id="aToLogin">Back to log in</button></div>`);
+      <button class="cta wide" id="aGo">Send link</button><div class="alinks"><button class="alink" id="aToLogin">Back to log in</button></div>`);
     $('aEmail').value = email;
-    $('aGo').onclick = async () => { email = $('aEmail').value.trim(); if (!/^\S+@\S+\.\S+$/.test(email)) return err('Enter a valid email.'); busy($('aGo'), true, 'Sending…'); try { await auth.sendReset(email); show('reset'); cooldown(); } catch (e) { err(e.message); busy($('aGo'), false, 'Send code'); } };
+    $('aGo').onclick = async () => { email = $('aEmail').value.trim(); if (!/^\S+@\S+\.\S+$/.test(email)) return err('Enter a valid email.'); busy($('aGo'), true, 'Sending…'); try { await auth.sendReset(email); show('reset'); cooldown(); } catch (e) { err(e.message); busy($('aGo'), false, 'Send link'); } };
     $('aToLogin').onclick = () => show('login');
   }
   if (note) { const p = document.createElement('p'); p.className = 'anote'; p.textContent = note; box.querySelector('.asub').after(p); }
 }
 
 /* "Send a new code" waits 60 seconds between sends (Supabase limits it too) */
-let resendAt = 0, timer = 0;
+let resendAt = 0, timer = 0, watch = 0;
 function cooldown() { resendAt = Date.now() + 60000; tick(); }
 function tick() {
   clearTimeout(timer); const b = $('aResend'); if (!b) return;
   const left = Math.ceil((resendAt - Date.now()) / 1000);
-  b.disabled = left > 0; b.textContent = left > 0 ? `Send a new code in ${left}s` : 'Send a new code';
+  b.disabled = left > 0; b.textContent = left > 0 ? `Send the link again in ${left}s` : 'Send the link again';
   if (left > 0) timer = setTimeout(tick, 1000);
 }
 

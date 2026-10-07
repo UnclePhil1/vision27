@@ -26,36 +26,34 @@ This creates:
 
 Every table has Row Level Security turned on.
 
-## 2. Turn on email codes (OTP)
+## 2. Email settings
 
 **Authentication → Sign In / Providers → Email**
 
 - Email provider: **on**
-- Confirm email: **on**
-- Email OTP length: **6**
+- Confirm email: **off**
+
+Email is optional in Vision27. Players without an email log in with their username, so "Confirm email" must be off or they can't start. Players who give an email can still reset a forgotten password. Players without one can add an email later in the Me app.
 
 **Authentication → Emails → Templates**
 
-Each email shows both a 6-digit code and a button. Players can type the code in the game or tap the button; both work.
+The game uses links: players click the button in the email to confirm their account or reset their password.
 
-**Confirm signup**: subject `Your Vision27 code`, message:
+**Confirm signup**: subject `Confirm your Vision27 account`, message:
 
 ```html
 <h2>Welcome to Vision27</h2>
-<p>Your code is:</p>
-<p style="font-size:32px;font-weight:bold;letter-spacing:6px">{{ .Token }}</p>
-<p>Or tap this button to confirm and play:</p>
+<p>Click the button to confirm your registration and start playing:</p>
 <p><a href="{{ .ConfirmationURL }}" style="background:#1d8a4a;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;display:inline-block">Confirm my email</a></p>
-<p>The code expires in 1 hour. If you did not sign up, ignore this email.</p>
+<p>If you did not sign up, ignore this email.</p>
 ```
 
 **Reset password**: subject `Reset your Vision27 password`, message:
 
 ```html
-<p>Your password reset code is:</p>
-<p style="font-size:32px;font-weight:bold;letter-spacing:6px">{{ .Token }}</p>
-<p>Or tap this button to choose a new password:</p>
+<p>Click the button to choose a new password:</p>
 <p><a href="{{ .ConfirmationURL }}" style="background:#1d8a4a;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;display:inline-block">Reset my password</a></p>
+<p>If you did not ask for this, ignore this email.</p>
 ```
 
 ## 3. Send real emails (needed, or players get no code)
@@ -128,13 +126,13 @@ The game reads this when it loads. No rebuild needed.
 ## 8. Launch checklist
 
 - [ ] Schema run (step 1)
-- [ ] Confirm email on, OTP length 6, both email templates show `{{ .Token }}` (step 2)
+- [ ] Confirm email off, both email templates use `{{ .ConfirmationURL }}` (step 2)
 - [ ] Custom SMTP added, and a test sign-up email arrives in your inbox, not spam (step 3)
 - [ ] Site URL set (step 4)
 - [ ] Deployed on HTTPS (step 5)
 - [ ] TURN relay added (step 7)
 - [ ] Your admin account set (step 6)
-- [ ] Test on a phone: sign up, get the code, make an avatar, walk, turn on the mic with a friend
+- [ ] Test on a phone: sign up with and without an email, make an avatar, walk, turn on the mic with a friend
 
 ## How elections work
 

@@ -61,8 +61,19 @@ export function initHub(backend) {
   function renderMe(body) {
     const p = G.profile || {};
     body.innerHTML = `<div class="ph-card"><b>${esc(p.username)}</b><small>${esc(ROLES[eco.role || 'citizen'].name)}${p.office ? ' · ' + esc(RANKS[officeRank(p.office)]) : ''} · Level ${eco.life.level || 1}</small><small>Money is saved to your account every few seconds.</small>
-      <button class="cta ghost" id="meOut">Log out</button></div>`;
+      <div id="meMail"></div><button class="cta ghost" id="meOut">Log out</button></div>`;
     body.querySelector('#meOut').onclick = () => G.logout?.();
+    // players who signed up without an email can add one later, for password resets
+    backend?.auth?.session().then(s => {
+      const el = body.querySelector('#meMail'); if (!el || !s) return;
+      if (backend.hasRealEmail(s.user.email)) { el.innerHTML = `<small>Email: ${esc(s.user.email)}</small>`; return; }
+      el.innerHTML = '<small>No email on this account, so a forgotten password cannot be reset.</small><button class="chip" id="meAddMail">Add an email</button>';
+      el.querySelector('#meAddMail').onclick = async () => {
+        const e = (await askText('Your email', 'you@example.com') || '').trim(); if (!e) return;
+        if (!/^\S+@\S+\.\S+$/.test(e)) return G.toast('That email does not look right');
+        try { await backend.auth.addEmail(e); G.toast('Check your email and click the link to add it.'); } catch (x) { G.toast(x.message); }
+      };
+    });
   }
 }
 export function askText(title, placeholder) {

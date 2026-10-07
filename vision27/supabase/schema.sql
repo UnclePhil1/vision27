@@ -58,6 +58,13 @@ language sql security definer set search_path = public stable as $$
   select name ~ '^[A-Za-z0-9_]{3,20}$' and not exists (select 1 from public.profiles where username = name::citext);
 $$;
 grant execute on function public.username_available(text) to anon, authenticated;
+-- for the login screen: does this username log in by name (no email) or by its email? Never returns the email itself.
+create or replace function public.login_kind(name text) returns text
+language sql security definer set search_path = public stable as $$
+  select case when u.email like '%@player.vision27.vercel.app' then 'name' else 'email' end
+  from public.profiles p join auth.users u on u.id = p.id where p.username = name::citext;
+$$;
+grant execute on function public.login_kind(text) to anon, authenticated;
 
 -------------------------------------------------------------------------------
 -- 2. Key-value documents: chat, follows, homes, keys, DMs, adverts, saves.

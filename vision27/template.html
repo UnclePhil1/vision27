@@ -278,6 +278,7 @@ a.cta{text-decoration:none;display:inline-block}
 .abrand{display:flex;align-items:baseline;gap:8px;margin-bottom:14px}.abrand b{font-size:15px;color:var(--green-deep);font-weight:600}.abrand small{color:var(--soft);font-size:12px}
 .acard h1{font-size:26px;margin:0 0 4px;font-weight:600}
 .asub{margin:0 0 16px;color:var(--soft);font-size:15px;line-height:1.45}
+.amail{background:#fff;border:1px dashed var(--edge);border-radius:12px;padding:10px 12px;margin:4px 0 14px;display:grid;gap:3px}.amail b{font-size:14px}.amail small{color:var(--soft);line-height:1.45}
 .anote{margin:-8px 0 14px;font-size:13px;color:#7a4a00;background:#fff4d6;border-radius:10px;padding:8px 10px}
 .af{display:grid;gap:5px;margin-bottom:12px}.af span{font-size:13px;color:var(--soft);font-weight:500}
 .af input{font:inherit;font-size:16px;padding:12px 14px;border:1.5px solid var(--edge);border-radius:12px;background:#fff;color:var(--ink);outline:none;width:100%;box-sizing:border-box}
@@ -522,7 +523,8 @@ body.touch .vpanel{right:auto;left:50%;transform:translateX(-50%);top:calc(12px 
 <script>
 /* shows the first error on screen, so a problem never looks like a blank page */
 (function(){var shown=false;window.__showErr=function(e){console.error(e);if(shown)return;shown=true;var b=document.createElement('div');b.className='errbox';b.textContent='Something broke: '+((e&&e.message)||e)+'. Tap to close. Please send this message to the developer.';b.onclick=function(){b.remove()};(document.body||document.documentElement).appendChild(b);};
-window.addEventListener('error',function(e){if(e.target&&e.target!==window)return;window.__showErr(e.error||e.message);});
+/* only our own errors: browser extensions (wallets like MetaMask) throw into the page too */
+window.addEventListener('error',function(e){if(e.target&&e.target!==window)return;var f=e.filename||'',m=String((e.error&&e.error.message)||e.message||'');if(/^(chrome|moz|safari)(-web)?-extension:/.test(f)||(f&&f.split('#')[0]!==location.href.split('#')[0])||/ethereum|solana|phantom|metamask|web3|tronweb|extension/i.test(m))return;window.__showErr(e.error||e.message);});
 if(!window.WebGLRenderingContext||!document.createElement('canvas').getContext('webgl2')&&!document.createElement('canvas').getContext('webgl'))window.addEventListener('DOMContentLoaded',function(){window.__showErr('This browser cannot show 3D (WebGL is off). Turn on hardware acceleration in your browser settings');});})();
 </script>
 <script type="module">

@@ -21,6 +21,7 @@ function friendly(m) {
   if (/email not confirmed/i.test(m)) return 'EMAIL_NOT_CONFIRMED';
   if (/already registered|already been registered/i.test(m)) return 'That email already has an account. Log in instead.';
   if (/token has expired|invalid.*token|otp/i.test(m)) return 'That code is wrong or has expired. Ask for a new one.';
+  if (/email rate limit/i.test(m)) return 'The game has sent too many emails this hour. Please try again later.';
   if (/rate limit|too many/i.test(m)) return 'Too many tries. Wait a minute and try again.';
   if (/password should be|weak password/i.test(m)) return 'Password must be at least 8 characters, with letters and numbers.';
   if (/error sending|sending (confirmation|recovery|magic)/i.test(m)) return 'We could not send the email right now. Try again in a few minutes.';
@@ -32,18 +33,24 @@ function friendly(m) {
 }
 
 /* ---------------- auth ---------------- */
+// players who skip the email box log in with their username; Supabase still needs an email, so we make one that never receives mail
+const NO_EMAIL = '@player.vision27.vercel.app';
+export const nameEmail = u => u.toLowerCase() + NO_EMAIL;
+export const hasRealEmail = e => !!e && !e.endsWith(NO_EMAIL);
 export const auth = {
   session: async () => (await sb.auth.getSession()).data.session,
   usernameFree: async name => { const { data, error } = await sb.rpc('username_available', { name }); return error ? true : !!data; },
   signUp: async (username, email, password) => {
-    const r = await ok(sb.auth.signUp({ email, password, options: { data: { username }, emailRedirectTo: SITE_URL } }));
+    const r = await ok(sb.auth.signUp({ email: email || nameEmail(username), password, options: { data: { username }, emailRedirectTo: SITE_URL } }));
     // Supabase hides whether an email is taken: it answers with a user that has no identities and sends nothing
     if (r.user && !r.session && Array.isArray(r.user.identities) && !r.user.identities.length) throw new Error('That email already has an account. Log in instead, or reset your password.');
     return r;
   },
   verify: (email, token, type = 'email') => ok(sb.auth.verifyOtp({ email, token, type })),
   resend: email => ok(sb.auth.resend({ type: 'signup', email, options: { emailRedirectTo: SITE_URL } })),
-  login: (email, password) => ok(sb.auth.signInWithPassword({ email, password })),
+  login: (id, password) => ok(sb.auth.signInWithPassword({ email: id.includes('@') ? id : nameEmail(id), password })),
+  loginKind: async name => (await sb.rpc('login_kind', { name })).data,      // 'name', 'email' or null
+  addEmail: email => ok(sb.auth.updateUser({ email }, { emailRedirectTo: SITE_URL })),
   sendReset: email => ok(sb.auth.resetPasswordForEmail(email, { redirectTo: SITE_URL })),
   setPassword: password => ok(sb.auth.updateUser({ password })),
   logout: () => sb.auth.signOut(),
