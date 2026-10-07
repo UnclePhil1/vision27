@@ -1,0 +1,4 @@
+# Netlify: build command and folder. Headers live in web/_headers (copied into dist/web).
+[build]
+  command = "npm ci && node build.mjs"
+  publish = "dist/web"
